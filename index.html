@@ -1239,6 +1239,29 @@ function renderStats() {
   // Most points
   const mostPts = [...players].sort((a,b) => b.pts - a.pts)[0];
 
+  // Bounty kills
+  const bountyKills = {};
+  players.forEach(p => bountyKills[p.name] = 0);
+  matches.forEach(m => {
+    if (m.bountyMatch && m.result !== 'draw') {
+      const winner = m.result === 'p1' ? m.p1 : m.p2;
+      const loser = m.result === 'p1' ? m.p2 : m.p1;
+      const loserPlayer = players.find(p => p.name === loser);
+      if (loserPlayer && loserPlayer.hasBounty !== undefined) {
+        // loser had the bounty
+        if (bountyKills[winner] !== undefined) bountyKills[winner]++;
+      }
+    }
+  });
+  // Use match bountyMatch flag - winner gets credit if loser was bounty holder
+  const bountyKillsClean = {};
+  players.forEach(p => bountyKillsClean[p.name] = 0);
+  matches.filter(m => m.bountyMatch && m.result !== 'draw').forEach(m => {
+    const winner = m.result === 'p1' ? m.p1 : m.p2;
+    if (bountyKillsClean[winner] !== undefined) bountyKillsClean[winner]++;
+  });
+  const topBountyHunter = Object.entries(bountyKillsClean).sort((a,b) => b[1]-a[1]).filter(e => e[1] > 0)[0];
+
   // Win rate (min 3 matches)
   const winRates = players
     .map(p => ({ name: p.name, gp: getPlayerMatchCount(p.name), rate: getPlayerMatchCount(p.name) >= 3 ? Math.round((p.wins / getPlayerMatchCount(p.name)) * 100) : null }))
@@ -1272,8 +1295,9 @@ function renderStats() {
     <div class="section-title" style="margin-top:20px;">WEITERE STATS</div>
     ${statCard('💀', 'MEISTE NIEDERLAGEN', mostLosses ? mostLosses.name : '—', mostLosses ? mostLosses.losses + ' Niederlagen' : '')}
     ${statCard('📉', 'SCHLECHTESTE WINRATE', worstWinRate ? worstWinRate.name : '—', worstWinRate ? worstWinRate.rate + '% (' + worstWinRate.gp + ' Matches)' : 'Zu wenig Daten')}
-    ${statCard('🤝', 'RIVALITÄT DES TURNIERS', topPair ? topPair[0] : '—', topPair ? topPair[1] + ' Spiele gegeneinander' : 'Noch keine Matches')}
     ${statCard('🎯', 'GESAMTE MATCHES', matches.length + ' Spiele', players.length + ' Spieler aktiv')}
+    ${statCard('🤝', 'RIVALITÄT DES TURNIERS', topPair ? topPair[0] : '—', topPair ? topPair[1] + ' Spiele gegeneinander' : 'Noch keine Matches')}
+    ${statCard('💰', 'MEISTE KOPFGELDER BESIEGT', topBountyHunter ? topBountyHunter[0] : '—', topBountyHunter ? topBountyHunter[1] + ' Kopfgeld' + (topBountyHunter[1] > 1 ? 'er' : '') + ' geknackt' : 'Noch kein Kopfgeld besiegt')}
   `;
 }
 
