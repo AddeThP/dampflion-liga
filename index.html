@@ -452,7 +452,15 @@
 
   <div id="admin-panel" style="display:none;">
     <div class="form-card">
-      <div class="form-title">ERGEBNIS EINTRAGEN</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:10px;">
+        <div class="form-title" style="margin:0;border:none;padding:0;">ERGEBNIS EINTRAGEN</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:11px;letter-spacing:1px;color:var(--text-muted);">WARTUNGSMODUS</span>
+          <div id="maintenance-toggle" onclick="toggleMaintenance()" style="width:40px;height:22px;border-radius:11px;background:var(--anthracite-4);border:1px solid var(--border);cursor:pointer;position:relative;transition:all 0.2s;">
+            <div id="maintenance-knob" style="width:16px;height:16px;border-radius:50%;background:var(--text-muted);position:absolute;top:2px;left:2px;transition:all 0.2s;"></div>
+          </div>
+        </div>
+      </div>
       <div class="form-row">
         <div class="form-group">
           <div class="form-label">SPIELER 1</div>
@@ -847,8 +855,8 @@ function updateMatchInfo() {
   infoBox.style.display = 'block';
   infoBox.textContent = `${p1n}: ${p1.pts} PTS | ${p2n}: ${p2.pts} PTS | Diese Woche: ${wc}/5 Spiele`;
 
-  weekBox.style.display = wc >= 5 ? 'block' : 'none';
-  if (wc >= 5) weekBox.textContent = `⚠ Wochenlimit! ${p1n} und ${p2n} haben diese Woche bereits 5 Spiele.`;
+  weekBox.style.display = (!maintenanceMode && wc >= 5) ? 'block' : 'none';
+  if (!maintenanceMode && wc >= 5) weekBox.textContent = `⚠ Wochenlimit! ${p1n} und ${p2n} haben diese Woche bereits 5 Spiele.`;
 
   const isBounty = p1.hasBounty || p2.hasBounty;
   bountyBox.style.display = isBounty ? 'block' : 'none';
@@ -858,7 +866,7 @@ function updateMatchInfo() {
 function setResult(r) {
   const p1n = document.getElementById('p1-select').value;
   const p2n = document.getElementById('p2-select').value;
-  if (!p1n || !p2n || p1n === p2n || getWeekMatchCount(p1n, p2n) >= 5) return;
+  if (!p1n || !p2n || p1n === p2n || (!maintenanceMode && getWeekMatchCount(p1n, p2n) >= 5)) return;
   selectedResult = r; updateResultBtns(); updatePtsPreview();
   document.getElementById('submit-btn').disabled = false;
 }
@@ -895,11 +903,33 @@ function updatePtsPreview() {
   box.textContent = `${winner.name} erhält ${pts} Punkte.${isBounty ? ' (Kopfgeld-Sieg!)' : winner.pts < loser.pts ? ' (Sieg gegen Stärkeren → +3!)' : ' (Gleicher/Schwächerer Gegner)'}`;
 }
 
+let maintenanceMode = false;
+
+function toggleMaintenance() {
+  maintenanceMode = !maintenanceMode;
+  const toggle = document.getElementById('maintenance-toggle');
+  const knob = document.getElementById('maintenance-knob');
+  if (maintenanceMode) {
+    toggle.style.background = '#e67e22';
+    toggle.style.borderColor = '#e67e22';
+    knob.style.left = '20px';
+    knob.style.background = '#fff';
+    showToast('Wartungsmodus AN — Wochenlimit deaktiviert!');
+  } else {
+    toggle.style.background = 'var(--anthracite-4)';
+    toggle.style.borderColor = 'var(--border)';
+    knob.style.left = '2px';
+    knob.style.background = 'var(--text-muted)';
+    showToast('Wartungsmodus AUS — Wochenlimit aktiv!');
+  }
+  updateMatchInfo();
+}
+
 function submitResult() {
   const p1n = document.getElementById('p1-select').value;
   const p2n = document.getElementById('p2-select').value;
   if (!p1n || !p2n || p1n === p2n || !selectedResult) return;
-  if (getWeekMatchCount(p1n, p2n) >= 5) { showToast('Wochenlimit erreicht!', true); return; }
+  if (!maintenanceMode && getWeekMatchCount(p1n, p2n) >= 5) { showToast('Wochenlimit erreicht!', true); return; }
 
   const p1key = nameToKey(p1n), p2key = nameToKey(p2n);
   const p1 = {...state.players[p1key]};
