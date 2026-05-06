@@ -453,7 +453,10 @@
   <div id="admin-lock-screen">
     <div class="admin-lock">
       <h3>ADMIN ZUGANG</h3>
-      <p>Nur der Admin kann Ergebnisse eintragen.</p>
+      <div style="margin-bottom:16px;">
+        <div style="font-size:12px;color:var(--text-muted);letter-spacing:1px;margin-bottom:8px;">ADMIN — Spiele eintragen & Spieler hinzufügen</div>
+        <div style="font-size:12px;color:var(--gold-dim);letter-spacing:1px;">⚡ POWERADMIN — Alle Funktionen</div>
+      </div>
       <div class="form-group" style="margin-bottom:12px;">
         <input type="password" id="pw-input" placeholder="Passwort..." onkeydown="if(event.key==='Enter')checkPw()">
       </div>
@@ -463,6 +466,10 @@
 
   <div id="admin-panel" style="display:none;">
     <div class="form-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border);">
+        <span id="admin-badge" style="font-size:11px;letter-spacing:2px;font-family:'Cinzel',serif;">✅ ADMIN</span>
+        <button onclick="logoutAdmin()" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:4px 10px;border-radius:3px;font-size:11px;cursor:pointer;font-family:'Rajdhani',sans-serif;letter-spacing:1px;">AUSLOGGEN</button>
+      </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:10px;">
         <div class="form-title" style="margin:0;border:none;padding:0;">ERGEBNIS EINTRAGEN</div>
         <div style="display:flex;align-items:center;gap:8px;">
@@ -513,13 +520,13 @@
       <div id="player-manage-list"></div>
     </div>
 
-    <div class="form-card" style="border-color:rgba(239,83,80,0.3);">
+    <div class="form-card poweradmin-only" style="border-color:rgba(239,83,80,0.3);">
       <div class="form-title" style="color:#ef5350;">GEFAHRENZONE</div>
       <div class="info-box warning" style="margin-bottom:12px;">Setzt alle Punkte, Matches und Statistiken auf 0 zurück. Spielernamen bleiben erhalten.</div>
       <button class="submit-btn" onclick="resetAll()" style="background:rgba(239,83,80,0.15);border-color:#ef5350;color:#ef5350;">ALLE DATEN ZURÜCKSETZEN</button>
     </div>
 
-    <div class="form-card">
+    <div class="form-card poweradmin-only">
       <div class="form-title">BOOSTER VERWALTEN</div>
       <div class="info-box" style="margin-bottom:12px;">🔵 Hellblau = gekauft &nbsp;|&nbsp; 🟡 Gold = verfügbar, noch nicht gekauft &nbsp;|&nbsp; ⬛ Grau = noch nicht verdient</div>
       <div id="booster-manage-list"></div>
@@ -601,6 +608,8 @@ const db = firebase.database();
 // CONSTANTS
 // =============================================
 const ADMIN_PW = 'dampflion2026';
+const POWERADMIN_PW = 'dampflionadde2026';
+let adminLevel = 0; // 0=none, 1=admin, 2=poweradmin
 const SEASON_END = new Date('2026-06-17T23:59:59');
 const DEFAULT_PLAYERS = ['Tobi','Dirk','Golden Boy','Mingi','Kenny','Julius','Adde','Hirschi','Marco','Robert A.','Kay','Stephan','Leon','Denny','Martin K.'];
 
@@ -855,7 +864,7 @@ function renderHistory() {
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <div class="history-pts">${pts} PTS</div>
-        ${isAdmin ? `<button class="delete-btn" onclick="deleteMatch('${m._key}','${m.p1}','${m.p2}',${m.ptsAwarded},'${m.result}',${m.bountyMatch||false})">✕</button>` : ''}
+        ${adminLevel >= 2 ? `<button class="delete-btn" onclick="deleteMatch('${m._key}','${m.p1}','${m.p2}',${m.ptsAwarded},'${m.result}',${m.bountyMatch||false})">✕</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -1079,11 +1088,31 @@ function removePlayer(key, name) {
 }
 
 function checkPw() {
-  if (document.getElementById('pw-input').value === ADMIN_PW) {
-    document.getElementById('admin-lock-screen').style.display = 'none';
-    document.getElementById('admin-panel').style.display = 'block';
-    fillSelects(); renderAdminPlayerList(); renderBoosterList();
-  } else { showToast('Falsches Passwort!', true); }
+  const pw = document.getElementById('pw-input').value;
+  if (pw === POWERADMIN_PW) {
+    adminLevel = 2;
+  } else if (pw === ADMIN_PW) {
+    adminLevel = 1;
+  } else {
+    showToast('Falsches Passwort!', true); return;
+  }
+  document.getElementById('admin-lock-screen').style.display = 'none';
+  document.getElementById('admin-panel').style.display = 'block';
+  applyAdminLevel();
+  fillSelects(); renderAdminPlayerList(); renderBoosterList();
+  showToast(adminLevel === 2 ? '⚡ Poweradmin eingeloggt!' : '✅ Admin eingeloggt!');
+}
+
+function applyAdminLevel() {
+  // Booster & danger zone only for poweradmin
+  const powerOnly = document.querySelectorAll('.poweradmin-only');
+  powerOnly.forEach(el => el.style.display = adminLevel >= 2 ? '' : 'none');
+  // Admin badge
+  const badge = document.getElementById('admin-badge');
+  if (badge) {
+    badge.textContent = adminLevel === 2 ? '⚡ POWERADMIN' : '✅ ADMIN';
+    badge.style.color = adminLevel === 2 ? 'var(--gold)' : '#4caf50';
+  }
 }
 
 // =============================================
@@ -1121,6 +1150,13 @@ function deleteMatch(key, p1n, p2n, pts, result, bountyMatch) {
   db.ref().update(updates)
     .then(() => showToast('Match gelöscht & Punkte zurückgebucht!'))
     .catch(() => showToast('Fehler beim Löschen!', true));
+}
+
+function logoutAdmin() {
+  adminLevel = 0;
+  document.getElementById('admin-panel').style.display = 'none';
+  document.getElementById('admin-lock-screen').style.display = 'block';
+  document.getElementById('pw-input').value = '';
 }
 
 function resetAll() {
