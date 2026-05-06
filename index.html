@@ -396,6 +396,7 @@
 
 <div class="nav">
   <button class="nav-btn active" onclick="showPage('standings',this)">TABELLE</button>
+  <button class="nav-btn" onclick="showPage('stats',this)">STATISTIKEN</button>
   <button class="nav-btn" onclick="showPage('admin',this)">ADMIN</button>
   <button class="nav-btn" onclick="showPage('history',this)">VERLAUF</button>
   <button class="nav-btn" onclick="showPage('rules',this)">REGELN</button>
@@ -433,6 +434,16 @@
     </div>
     <div style="margin-top:10px;font-size:11px;color:var(--text-muted);text-align:center;letter-spacing:1px;">
       GP = Gespielte Matches &nbsp;|&nbsp; 🔥 = Kopfgeld aktiv &nbsp;|&nbsp; Booster = verfügbare Zusatzpacks
+    </div>
+  </div>
+</div>
+
+<!-- STATISTIKEN -->
+<div id="page-stats" class="page">
+  <div id="stats-content">
+    <div class="loading-screen">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">LADE STATISTIKEN...</div>
     </div>
   </div>
 </div>
@@ -512,7 +523,14 @@
 
 <!-- HISTORY -->
 <div id="page-history" class="page">
-  <div class="section-title">MATCH-VERLAUF (<span id="history-count">0</span>)</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+    <div class="section-title" style="margin:0;">MATCH-VERLAUF (<span id="history-count">0</span>)</div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <select id="history-filter" onchange="renderHistory()" style="background:var(--anthracite-3);border:1px solid var(--border);color:var(--text-primary);padding:6px 12px;border-radius:4px;font-family:'Rajdhani',sans-serif;font-size:13px;min-width:160px;">
+        <option value="">Alle Spieler</option>
+      </select>
+    </div>
+  </div>
   <div id="history-list">
     <div class="loading-screen">
       <div class="loading-spinner"></div>
@@ -780,11 +798,33 @@ function changeBoosterBought(name, delta) {
 // =============================================
 function renderHistory() {
   const list = document.getElementById('history-list');
-  const matches = Object.values(state.matches);
+  const filterEl = document.getElementById('history-filter');
+  const selectedPlayer = filterEl ? filterEl.value : '';
+
+  // Populate dropdown
+  if (filterEl && filterEl.options.length <= 1) {
+    const players = Object.values(state.players).sort((a,b) => a.name.localeCompare(b.name));
+    players.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.name; o.textContent = p.name;
+      filterEl.appendChild(o);
+    });
+  }
+
+  const allMatches = Object.values(state.matches);
   const countEl = document.getElementById('history-count');
-  if (countEl) countEl.textContent = matches.length;
-  if (!matches.length) {
+  if (countEl) countEl.textContent = allMatches.length;
+
+  const matches = selectedPlayer
+    ? allMatches.filter(m => m.p1 === selectedPlayer || m.p2 === selectedPlayer)
+    : allMatches;
+
+  if (!allMatches.length) {
     list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:24px;">Noch keine Spiele eingetragen.</div>';
+    return;
+  }
+  if (!matches.length) {
+    list.innerHTML = `<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:24px;">Keine Spiele für ${selectedPlayer} gefunden.</div>`;
     return;
   }
   matches.sort((a,b) => (b.ts || 0) - (a.ts || 0));
@@ -1036,12 +1076,126 @@ function checkPw() {
 // =============================================
 // UI HELPERS
 // =============================================
+function renderStats() {
+  const el = document.getElementById('stats-content');
+  const players = Object.values(state.players);
+  const matches = Object.values(state.matches);
+
+  if (!players.length) return;
+
+  // Most matches played
+  const mostMatches = [...players].sort((a,b) => getPlayerMatchCount(b.name) - getPlayerMatchCount(a.name))[0];
+
+  // Highest win streak ever (we track current, so best current)
+  const highestWinStreak = [...players].sort((a,b) => b.wins - a.wins);
+  // Best streak from match history - calculate all-time best
+  const allTimeStreak = {};
+  players.forEach(p => { allTimeStreak[p.name] = { best: 0, cur: 0 }; });
+  [...matches].sort((a,b) => (a.ts||0)-(b.ts||0)).forEach(m => {
+    if (m.result === 'draw') {
+      allTimeStreak[m.p1] && (allTimeStreak[m.p1].cur = 0);
+      allTimeStreak[m.p2] && (allTimeStreak[m.p2].cur = 0);
+    } else {
+      const w = m.result === 'p1' ? m.p1 : m.p2;
+      const l = m.result === 'p1' ? m.p2 : m.p1;
+      if (allTimeStreak[w]) { allTimeStreak[w].cur++; allTimeStreak[w].best = Math.max(allTimeStreak[w].best, allTimeStreak[w].cur); }
+      if (allTimeStreak[l]) allTimeStreak[l].cur = 0;
+    }
+  });
+  const bestStreakPlayer = Object.entries(allTimeStreak).sort((a,b) => b[1].best - a[1].best)[0];
+
+  // Highest loss streak (all-time)
+  const allTimeLoseStreak = {};
+  players.forEach(p => { allTimeLoseStreak[p.name] = { best: 0, cur: 0 }; });
+  [...matches].sort((a,b) => (a.ts||0)-(b.ts||0)).forEach(m => {
+    if (m.result === 'draw') {
+      allTimeLoseStreak[m.p1] && (allTimeLoseStreak[m.p1].cur = 0);
+      allTimeLoseStreak[m.p2] && (allTimeLoseStreak[m.p2].cur = 0);
+    } else {
+      const w = m.result === 'p1' ? m.p1 : m.p2;
+      const l = m.result === 'p1' ? m.p2 : m.p1;
+      if (allTimeLoseStreak[l]) { allTimeLoseStreak[l].cur++; allTimeLoseStreak[l].best = Math.max(allTimeLoseStreak[l].best, allTimeLoseStreak[l].cur); }
+      if (allTimeLoseStreak[w]) allTimeLoseStreak[w].cur = 0;
+    }
+  });
+  const worstStreakPlayer = Object.entries(allTimeLoseStreak).sort((a,b) => b[1].best - a[1].best)[0];
+
+  // Most played pair
+  const pairCounts = {};
+  matches.forEach(m => {
+    const key = [m.p1, m.p2].sort().join(' vs ');
+    pairCounts[key] = (pairCounts[key] || 0) + 1;
+  });
+  const topPair = Object.entries(pairCounts).sort((a,b) => b[1]-a[1])[0];
+
+  // Most wins
+  const mostWins = [...players].sort((a,b) => b.wins - a.wins)[0];
+
+  // Most losses
+  const mostLosses = [...players].sort((a,b) => b.losses - a.losses)[0];
+
+  // Most points
+  const mostPts = [...players].sort((a,b) => b.pts - a.pts)[0];
+
+  // Win rate (min 3 matches)
+  const winRates = players
+    .map(p => ({ name: p.name, gp: getPlayerMatchCount(p.name), rate: getPlayerMatchCount(p.name) >= 3 ? Math.round((p.wins / getPlayerMatchCount(p.name)) * 100) : null }))
+    .filter(p => p.rate !== null)
+    .sort((a,b) => b.rate - a.rate);
+  const bestWinRate = winRates[0];
+  const worstWinRate = winRates[winRates.length - 1];
+
+  function statCard(icon, label, value, sub) {
+    return `<div style="background:var(--anthracite-2);border:1px solid var(--border);border-radius:8px;padding:16px 18px;display:flex;align-items:center;gap:14px;margin-bottom:10px;">
+      <div style="font-size:28px;flex-shrink:0;">${icon}</div>
+      <div style="flex:1;">
+        <div style="font-size:10px;letter-spacing:2px;color:var(--text-muted);margin-bottom:3px;">${label}</div>
+        <div style="font-size:17px;font-family:'Cinzel',serif;color:var(--gold-light);font-weight:600;">${value}</div>
+        ${sub ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">${sub}</div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  el.innerHTML = `
+    <div class="section-title">BESTENLISTEN</div>
+    ${statCard('🏆', 'MEISTE PUNKTE', mostPts ? mostPts.name : '—', mostPts ? mostPts.pts + ' Punkte' : '')}
+    ${statCard('⚔️', 'MEISTE SIEGE', mostWins ? mostWins.name : '—', mostWins ? mostWins.wins + ' Siege' : '')}
+    ${statCard('🎮', 'MEISTE MATCHES GESPIELT', mostMatches ? mostMatches.name : '—', mostMatches ? getPlayerMatchCount(mostMatches.name) + ' Matches' : '')}
+    ${statCard('📈', 'BESTE WINRATE', bestWinRate ? bestWinRate.name : '—', bestWinRate ? bestWinRate.rate + '% (' + bestWinRate.gp + ' Matches)' : 'Zu wenig Daten')}
+
+    <div class="section-title" style="margin-top:20px;">STREAKS</div>
+    ${statCard('🔥', 'HÖCHSTE WIN-STREAK (ALL TIME)', bestStreakPlayer ? bestStreakPlayer[0] : '—', bestStreakPlayer ? bestStreakPlayer[1].best + ' Siege in Folge' : '')}
+    ${statCard('❄️', 'LÄNGSTE LOSE-STREAK (ALL TIME)', worstStreakPlayer ? worstStreakPlayer[0] : '—', worstStreakPlayer ? worstStreakPlayer[1].best + ' Niederlagen in Folge' : '')}
+
+    <div class="section-title" style="margin-top:20px;">WEITERE STATS</div>
+    ${statCard('💀', 'MEISTE NIEDERLAGEN', mostLosses ? mostLosses.name : '—', mostLosses ? mostLosses.losses + ' Niederlagen' : '')}
+    ${statCard('📉', 'SCHLECHTESTE WINRATE', worstWinRate ? worstWinRate.name : '—', worstWinRate ? worstWinRate.rate + '% (' + worstWinRate.gp + ' Matches)' : 'Zu wenig Daten')}
+    ${statCard('🤝', 'RIVALITÄT DES TURNIERS', topPair ? topPair[0] : '—', topPair ? topPair[1] + ' Spiele gegeneinander' : 'Noch keine Matches')}
+    ${statCard('🎯', 'GESAMTE MATCHES', matches.length + ' Spiele', players.length + ' Spieler aktiv')}
+  `;
+}
+
 function showPage(id, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
   if (btn) btn.classList.add('active');
-  if (id === 'history') renderHistory();
+  if (id === 'stats') renderStats();
+  if (id === 'history') {
+    // Refresh dropdown options in case new players were added
+    const filterEl = document.getElementById('history-filter');
+    if (filterEl) {
+      const cur = filterEl.value;
+      filterEl.innerHTML = '<option value="">Alle Spieler</option>';
+      Object.values(state.players).sort((a,b) => a.name.localeCompare(b.name)).forEach(p => {
+        const o = document.createElement('option');
+        o.value = p.name; o.textContent = p.name;
+        filterEl.appendChild(o);
+      });
+      filterEl.value = cur;
+    }
+    renderHistory();
+  }
 }
 
 function showToast(msg, err = false) {
