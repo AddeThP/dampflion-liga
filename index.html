@@ -513,6 +513,12 @@
       <div id="player-manage-list"></div>
     </div>
 
+    <div class="form-card" style="border-color:rgba(239,83,80,0.3);">
+      <div class="form-title" style="color:#ef5350;">GEFAHRENZONE</div>
+      <div class="info-box warning" style="margin-bottom:12px;">Setzt alle Punkte, Matches und Statistiken auf 0 zurück. Spielernamen bleiben erhalten.</div>
+      <button class="submit-btn" onclick="resetAll()" style="background:rgba(239,83,80,0.15);border-color:#ef5350;color:#ef5350;">ALLE DATEN ZURÜCKSETZEN</button>
+    </div>
+
     <div class="form-card">
       <div class="form-title">BOOSTER VERWALTEN</div>
       <div class="info-box" style="margin-bottom:12px;">🔵 Hellblau = gekauft &nbsp;|&nbsp; 🟡 Gold = verfügbar, noch nicht gekauft &nbsp;|&nbsp; ⬛ Grau = noch nicht verdient</div>
@@ -611,7 +617,10 @@ function initFirebase() {
   db.ref('/').on('value', snapshot => {
     const data = snapshot.val() || {};
     state.players = data.players || {};
-    state.matches = data.matches || {};
+    const rawMatches = data.matches || {};
+    // Attach key to each match for deletion
+    state.matches = {};
+    Object.entries(rawMatches).forEach(([k,v]) => { state.matches[k] = {...v, _key: k}; });
 
     if (!initialized && Object.keys(state.players).length === 0) {
       initDefaultPlayers();
@@ -828,6 +837,7 @@ function renderHistory() {
     return;
   }
   matches.sort((a,b) => (b.ts || 0) - (a.ts || 0));
+  const isAdmin = document.getElementById('admin-panel').style.display !== 'none';
   list.innerHTML = matches.map(m => {
     let resultStr, pts;
     if (m.result === 'draw') {
@@ -839,11 +849,14 @@ function renderHistory() {
       pts = `+${m.ptsAwarded}`;
     }
     return `<div class="history-item">
-      <div>
+      <div style="flex:1;">
         <div class="history-match">${m.p1} vs ${m.p2}${m.bountyMatch ? ' 🔥' : ''}</div>
         <div class="history-date">${m.date} — ${resultStr}</div>
       </div>
-      <div class="history-pts">${pts} PTS</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="history-pts">${pts} PTS</div>
+        ${isAdmin ? `<button class="delete-btn" onclick="deleteMatch('${m._key}','${m.p1}','${m.p2}',${m.ptsAwarded},'${m.result}',${m.bountyMatch||false})">✕</button>` : ''}
+      </div>
     </div>`;
   }).join('');
 }
@@ -922,7 +935,7 @@ function updateResultBtns() {
 }
 
 function calcPts(winner, loser, isBounty) {
-  if (isBounty) return 5;
+  if (isBounty && loser.hasBounty) return 5; // only reward for beating the bounty holder
   return winner.pts < loser.pts ? 3 : 2;
 }
 
@@ -1076,6 +1089,59 @@ function checkPw() {
 // =============================================
 // UI HELPERS
 // =============================================
+function deleteMatch(key, p1n, p2n, pts, result, bountyMatch) {
+  if (!confirm(`Match löschen: ${p1n} vs ${p2n}?\nDie Punkte werden automatisch zurückgebucht.`)) return;
+
+  const p1key = nameToKey(p1n), p2key = nameToKey(p2n);
+  const p1 = {...(state.players[p1key] || {})};
+  const p2 = {...(state.players[p2key] || {})};
+  if (!p1.name || !p2.name) { showToast('Spieler nicht gefunden!', true); return; }
+
+  const updates = {};
+
+  if (result === 'draw') {
+    p1.pts = Math.max(0, (p1.pts||0) - 1);
+    p1.draws = Math.max(0, (p1.draws||0) - 1);
+    p2.pts = Math.max(0, (p2.pts||0) - 1);
+    p2.draws = Math.max(0, (p2.draws||0) - 1);
+  } else {
+    const winnerKey = result === 'p1' ? p1key : p2key;
+    const loserKey = result === 'p1' ? p2key : p1key;
+    const winner = winnerKey === p1key ? p1 : p2;
+    const loser = loserKey === p1key ? p1 : p2;
+    winner.pts = Math.max(0, (winner.pts||0) - pts);
+    winner.wins = Math.max(0, (winner.wins||0) - 1);
+    loser.losses = Math.max(0, (loser.losses||0) - 1);
+  }
+
+  updates[`/players/${p1key}`] = p1;
+  updates[`/players/${p2key}`] = p2;
+  updates[`/matches/${key}`] = null;
+
+  db.ref().update(updates)
+    .then(() => showToast('Match gelöscht & Punkte zurückgebucht!'))
+    .catch(() => showToast('Fehler beim Löschen!', true));
+}
+
+function resetAll() {
+  if (!confirm('ACHTUNG: Alle Punkte, Matches und Statistiken werden auf 0 zurückgesetzt!\nWirklich fortfahren?')) return;
+  if (!confirm('Bist du absolut sicher? Diese Aktion kann nicht rückgängig gemacht werden!')) return;
+
+  const updates = {};
+  Object.entries(state.players).forEach(([key, p]) => {
+    updates[`/players/${key}`] = {
+      name: p.name,
+      pts: 0, wins: 0, losses: 0, draws: 0,
+      streak: 0, hasBounty: false, bountyBooster: 0, boostersBought: 0
+    };
+  });
+  updates['/matches'] = null;
+
+  db.ref().update(updates)
+    .then(() => showToast('Alles zurückgesetzt! Viel Erfolg beim Neu-Eintragen 🔥'))
+    .catch(() => showToast('Fehler beim Zurücksetzen!', true));
+}
+
 function renderStats() {
   const el = document.getElementById('stats-content');
   const players = Object.values(state.players);
