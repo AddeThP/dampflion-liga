@@ -404,6 +404,10 @@
 <!-- STANDINGS -->
 <div id="page-standings" class="page active">
   <div id="bounty-alert"></div>
+  <div id="total-matches-bar" style="display:none;background:var(--anthracite-2);border:1px solid var(--border);border-radius:6px;padding:10px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">
+    <span style="font-size:11px;letter-spacing:2px;color:var(--text-secondary);font-family:'Cinzel',serif;">GESAMT GESPIELTE SPIELE</span>
+    <span id="total-matches-num" style="font-family:'Cinzel',serif;font-size:20px;font-weight:700;color:var(--gold-light);">0</span>
+  </div>
   <div id="standings-loading" class="loading-screen">
     <div class="loading-spinner"></div>
     <div class="loading-text">LADE TABELLE...</div>
@@ -500,7 +504,7 @@
 
 <!-- HISTORY -->
 <div id="page-history" class="page">
-  <div class="section-title">MATCH-VERLAUF</div>
+  <div class="section-title">MATCH-VERLAUF (<span id="history-count">0</span>)</div>
   <div id="history-list">
     <div class="loading-screen">
       <div class="loading-spinner"></div>
@@ -663,6 +667,9 @@ function renderStandings() {
 
   document.getElementById('standings-loading').style.display = 'none';
   document.getElementById('standings-content').style.display = 'block';
+  const totalM = Object.values(state.matches).length;
+  document.getElementById('total-matches-num').textContent = totalM;
+  document.getElementById('total-matches-bar').style.display = 'flex';
 
   const sorted = [...players].sort((a,b) => b.pts - a.pts || b.wins - a.wins);
   const tbody = document.getElementById('standings-body');
@@ -766,6 +773,8 @@ function changeBoosterBought(name, delta) {
 function renderHistory() {
   const list = document.getElementById('history-list');
   const matches = Object.values(state.matches);
+  const countEl = document.getElementById('history-count');
+  if (countEl) countEl.textContent = matches.length;
   if (!matches.length) {
     list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:24px;">Noch keine Spiele eingetragen.</div>';
     return;
