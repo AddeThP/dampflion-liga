@@ -212,6 +212,8 @@
   .booster-cell { display: flex; align-items: center; justify-content: center; gap: 2px; }
   .booster-pip { width: 7px; height: 11px; border-radius: 2px; border: 1px solid var(--border); background: var(--anthracite-4); }
   .booster-pip.available { background: var(--gold); border-color: var(--gold); }
+  .booster-pip.bought { background: #4fc3f7; border-color: #4fc3f7; }
+  .booster-pip.bought { background: #4fc3f7; border-color: #4fc3f7; }
 
   /* FORMS */
   .form-card {
@@ -487,6 +489,12 @@
       <div class="form-title">SPIELER VERWALTEN</div>
       <div id="player-manage-list"></div>
     </div>
+
+    <div class="form-card">
+      <div class="form-title">BOOSTER VERWALTEN</div>
+      <div class="info-box" style="margin-bottom:12px;">🔵 Hellblau = gekauft &nbsp;|&nbsp; 🟡 Gold = verfügbar, noch nicht gekauft &nbsp;|&nbsp; ⬛ Grau = noch nicht verdient</div>
+      <div id="booster-manage-list"></div>
+    </div>
   </div>
 </div>
 
@@ -585,6 +593,7 @@ function initFirebase() {
       if (document.getElementById('admin-panel').style.display !== 'none') {
         fillSelects();
         renderAdminPlayerList();
+        renderBoosterList();
       }
     }
   }, err => {
@@ -668,8 +677,14 @@ function renderStandings() {
   sorted.forEach((p, i) => {
     const rank = i + 1;
     const earned = Math.min(4, Math.floor(p.losses / 3)) + (p.bountyBooster || 0);
+    const bought = p.boostersBought || 0;
     const avail = Math.max(0, earned);
-    const pips = Array.from({length:4}, (_,j) => `<div class="booster-pip ${j < avail ? 'available' : ''}"></div>`).join('');
+    const pips = Array.from({length:4}, (_,j) => {
+      let cls = '';
+      if (j < bought) cls = 'bought';
+      else if (j < avail) cls = 'available';
+      return `<div class="booster-pip ${cls}"></div>`;
+    }).join('');
     const streak = p.streak >= 5 ? `<span style="color:var(--bounty)">🔥${p.streak}</span>`
                  : p.streak >= 2 ? `<span style="color:var(--gold-dim)">${p.streak}↑</span>`
                  : p.streak <= -2 ? `<span style="color:#ef5350">${p.streak}↓</span>`
@@ -695,6 +710,54 @@ function renderStandings() {
     `;
     tbody.appendChild(tr);
   });
+}
+
+// =============================================
+// RENDER BOOSTER MANAGEMENT
+// =============================================
+function renderBoosterList() {
+  const players = Object.values(state.players).sort((a,b) => b.pts - a.pts);
+  const el = document.getElementById('booster-manage-list');
+  if (!el) return;
+  el.innerHTML = players.map(p => {
+    const earned = Math.min(4, Math.floor(p.losses / 3)) + (p.bountyBooster || 0);
+    const bought = p.boostersBought || 0;
+    const avail = Math.max(0, earned);
+    if (avail === 0) return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(201,168,76,0.06);opacity:0.4;">
+      <div style="font-size:13px;">${p.name}</div>
+      <div style="font-size:11px;color:var(--text-muted);">Noch kein Booster verdient</div>
+    </div>`;
+    const pips = Array.from({length:4}, (_,j) => {
+      let cls = '';
+      if (j < bought) cls = 'bought';
+      else if (j < avail) cls = 'available';
+      return `<div class="booster-pip ${cls}" style="width:10px;height:14px;"></div>`;
+    }).join('');
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(201,168,76,0.06);">
+      <div>
+        <div style="font-size:13px;margin-bottom:4px;">${p.name}</div>
+        <div style="display:flex;gap:3px;">${pips}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">${bought} gekauft / ${avail} verdient</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button onclick="changeBoosterBought('${p.name}',-1)" style="background:none;border:1px solid var(--border);color:var(--text-secondary);width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;" ${bought<=0?'disabled':''}>−</button>
+        <span style="font-size:15px;font-family:'Cinzel',serif;color:var(--gold);min-width:20px;text-align:center;">${bought}</span>
+        <button onclick="changeBoosterBought('${p.name}',1)" style="background:none;border:1px solid #4fc3f7;color:#4fc3f7;width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;" ${bought>=avail?'disabled':''}>+</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function changeBoosterBought(name, delta) {
+  const key = nameToKey(name);
+  const p = state.players[key];
+  if (!p) return;
+  const earned = Math.min(4, Math.floor(p.losses / 3)) + (p.bountyBooster || 0);
+  const current = p.boostersBought || 0;
+  const newVal = Math.max(0, Math.min(earned, current + delta));
+  db.ref(`/players/${key}/boostersBought`).set(newVal)
+    .then(() => showToast(`${name}: ${newVal} Booster gekauft`))
+    .catch(() => showToast('Fehler!', true));
 }
 
 // =============================================
@@ -927,7 +990,7 @@ function checkPw() {
   if (document.getElementById('pw-input').value === ADMIN_PW) {
     document.getElementById('admin-lock-screen').style.display = 'none';
     document.getElementById('admin-panel').style.display = 'block';
-    fillSelects(); renderAdminPlayerList();
+    fillSelects(); renderAdminPlayerList(); renderBoosterList();
   } else { showToast('Falsches Passwort!', true); }
 }
 
